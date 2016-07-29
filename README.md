@@ -1,7 +1,10 @@
 # cdntest
 
-CDN Test is a program intended to be distributed to the users of a service,
-in order to help debug connection issues to a CDN.
+CDN Test is a program intended to be able to be distributed to the users of a service,
+in order to help debug connection issues to a CDN. It provides a large amount of
+connection timing information, as well as DNS and the IP to which it connected.
+It also allows advanced users to specify an IP or DNS that will override the hostname in the URL,
+enabling you to test connections to CDN distributions without changing your hosts file or DNS entries.
 
 It is currently based mainly around the debugging of CloudFront requests,
 which helpfully already provide a source of helpful information:

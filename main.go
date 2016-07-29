@@ -33,6 +33,8 @@ import (
 	"github.com/urfave/cli"
 )
 
+const ipify = "https://api.ipify.org"
+
 var transport = &http.Transport{
 	Proxy: http.ProxyFromEnvironment,
 	ResponseHeaderTimeout: time.Second * 10,
@@ -56,11 +58,12 @@ func getPort(scheme string) (int, error) {
 }
 
 func getMyPublicIP() (string, error) {
-	response, err := DefaultClient.Get("https://api.ipify.org")
+	response, err := DefaultClient.Get(ipify)
 
 	if err != nil {
 		return "", fmt.Errorf(
-			"Could not contact https://api.ipify.org to get your public IP: %v",
+			"Could not contact %v to get your public IP: %v",
+			ipify,
 			err,
 		)
 	}
@@ -71,7 +74,8 @@ func getMyPublicIP() (string, error) {
 
 	if err != nil {
 		return "", fmt.Errorf(
-			"Could not contact https://api.ipify.org to get your public IP: %v",
+			"Could not contact %v to get your public IP: %v",
+			ipify,
 			err,
 		)
 	}
@@ -96,10 +100,6 @@ func main() {
 			Name:  "cname",
 			Usage: "Use an alternative DNS entry to lookup the IP",
 		},
-		cli.BoolFlag{
-			Name:  "md5",
-			Usage: "Generate an MD5 of the content body",
-		},
 		cli.StringFlag{
 			Name:  "out",
 			Usage: "Save the content body to a file",
@@ -115,7 +115,6 @@ func main() {
 			url:     c.Args()[0],
 			ip:      c.String("ip"),
 			cname:   c.String("cname"),
-			md5:     c.Bool("md5"),
 			outfile: c.String("out"),
 		})
 	}
@@ -130,7 +129,6 @@ type options struct {
 	url     string
 	ip      string
 	cname   string
-	md5     bool
 	outfile string
 }
 
@@ -281,13 +279,11 @@ func testHTTP(o options) error {
 		md5 := md5.New()
 		var writtenBytes int64
 
-		if o.md5 {
-			bodyWriters = append(bodyWriters, md5)
-		}
+		bodyWriters = append(bodyWriters, md5)
+
 		if o.outfile != "" {
 			f, openFileErr := os.OpenFile(o.outfile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 			if openFileErr != nil {
-				fmt.Println(openFileErr)
 				return fmt.Errorf("Unable to open %v for writing: %v", o.outfile, openFileErr)
 			}
 			defer func() {
@@ -301,12 +297,7 @@ func testHTTP(o options) error {
 			bodyWriters = append(bodyWriters, f)
 		}
 
-		writer := ioutil.Discard
-		if len(bodyWriters) > 0 {
-			writer = io.MultiWriter(bodyWriters...)
-		}
-
-		writtenBytes, err = io.Copy(writer, response.Body)
+		writtenBytes, err = io.Copy(io.MultiWriter(bodyWriters...), response.Body)
 		if err != nil {
 			return fmt.Errorf("Error reading content body: %v", err)
 		}
@@ -320,9 +311,7 @@ func testHTTP(o options) error {
 			timeTaken,
 			bps,
 		)
-		if o.md5 {
-			fmt.Printf("MD5 of Content %v\n", hex.EncodeToString(md5.Sum(nil)))
-		}
+		fmt.Printf("MD5 of Content %v\n", hex.EncodeToString(md5.Sum(nil)))
 	}
 
 	if response.Header.Get("X-Amz-Cf-Id") != "" {
