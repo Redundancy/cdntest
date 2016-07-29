@@ -14,19 +14,23 @@ then producing output in a file (and on the console) that the user can attach
 to a report.
 
 ## Usage
-You will require a test url to use.
-
-`cdntest http://d7uri8nf7uskq.cloudfront.net/sample.jpg`
 
 ```
-Running CDN test at 2016-01-31 22:23:42.999998 +0000 GMT
-Your public IP is ??.???.??.???
-Host lookup of d7uri8nf7uskq.cloudfront.net took 1.0041ms
-Your DNS resolver is ns1.internet.is (213.176.128.51)
-Connected to 54.192.198.113:80 in 50.7838ms
-Reading 68886 bytes took 206.4187ms (333 KiB/s)
-Amazon CloudFront Request ID: z9OebyMqisgcMFVmXcd0UqFO8_2mKLtkwWYr58QJC5YApYRXjlRYCQ==
-The CloudFront DNS server you query is server-216-137-58-23.ams1.r.cloudfront.net (216.137.58.23)
+> cdntest -md5 https://www.google.com
+Running CDN test at 2016-07-28 20:40:06.3299465 -0400 EDT
+My public IP is: xxx.xxx.xxx.xxx
+Host lookup of www.google.com took 14.6991ms
+DNS returned: [173.194.219.105 173.194.219.104 173.194.219.99 173.194.219.106 173.194.219.103 173.194.219.147]
+Your DNS resolver is  (71.242.0.216)
+Connected to 173.194.219.105:443 in 32.0209ms
+TLS handshake in 67.0429ms
+SSL Certificate Information
+        www.google.com - Issued by: Google Internet Authority G2, Valid Until: 2016-10-05 13:16:00 +0000 UTC
+        Google Internet Authority G2 - Valid Until: 2017-12-31 23:59:59 +0000 UTC
+        GeoTrust Global CA - Valid Until: 2018-08-21 04:00:00 +0000 UTC
+Response was 200 OK
+Reading 10487 bytes took 50.6795ms (206 KiB/s)
+MD5 of Content fda603052f13608c0364ed8f71e5e50c
 ```
 
 ## Features Still Needed
@@ -45,6 +49,9 @@ The CloudFront DNS server you query is server-216-137-58-23.ams1.r.cloudfront.ne
 - [x] SSL Handshake time
 - [x] SSL Certificate validation
 - [x] Download time
+- [x] MD5 Hash of content
+- [x] Response Code Status
+- [x] Save the content body to file
 - [ ] Number of redirects
 - [ ] Packet loss
 - [ ] Traceroute

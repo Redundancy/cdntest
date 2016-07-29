@@ -17,8 +17,10 @@ package main
 
 import (
 	"bufio"
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -28,7 +30,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 var transport = &http.Transport{
@@ -94,49 +96,61 @@ func main() {
 			Name:  "cname",
 			Usage: "Use an alternative DNS entry to lookup the IP",
 		},
+		cli.BoolFlag{
+			Name:  "md5",
+			Usage: "Generate an MD5 of the content body",
+		},
+		cli.StringFlag{
+			Name:  "out",
+			Usage: "Save the content body to a file",
+		},
 	}
 
-	app.Action = func(c *cli.Context) {
+	app.Action = func(c *cli.Context) error {
 		if c.NArg() != 1 {
-			return
+			return fmt.Errorf("Need a URL argument")
 		}
 
-		testHTTP(options{
-			url:   c.Args()[0],
-			ip:    c.String("ip"),
-			cname: c.String("cname"),
+		return testHTTP(options{
+			url:     c.Args()[0],
+			ip:      c.String("ip"),
+			cname:   c.String("cname"),
+			md5:     c.Bool("md5"),
+			outfile: c.String("out"),
 		})
 	}
 
-	app.Run(os.Args)
+	if err := app.Run(os.Args); err != nil {
+		fmt.Printf("Error: %v", err)
+		os.Exit(1)
+	}
 }
 
 type options struct {
-	url   string
-	ip    string
-	cname string
+	url     string
+	ip      string
+	cname   string
+	md5     bool
+	outfile string
 }
 
-func testHTTP(o options) {
+func testHTTP(o options) error {
 	cdnURL, err := url.Parse(o.url)
 
 	if err != nil {
-		fmt.Printf("Could not parse url: \"%v\" - %v\n", cdnURL, err)
-		os.Exit(1)
+		return fmt.Errorf("Could not parse url: \"%v\" - %v\n", cdnURL, err)
 	}
 
 	port, err := getPort(cdnURL.Scheme)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		return err
 	}
 
 	fmt.Println("Running CDN test at", time.Now())
 	myPublicIP, err := getMyPublicIP()
 
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		return err
 	}
 
 	fmt.Println("My public IP is:", myPublicIP)
@@ -153,8 +167,7 @@ func testHTTP(o options) {
 	fmt.Printf("Host lookup of %v took %v\n", host, time.Now().Sub(beforeLookup))
 
 	if err != nil {
-		fmt.Println("Could not look up host:", err)
-		os.Exit(1)
+		return fmt.Errorf("Could not look up host: %v", err)
 	}
 
 	fmt.Println("DNS returned:", addrs)
@@ -165,11 +178,14 @@ func testHTTP(o options) {
 	*/
 	resolverIdentities, _ := net.LookupHost("resolver-identity.cloudfront.net")
 	if len(resolverIdentities) > 0 {
-		resolverNames, _ := net.LookupAddr(resolverIdentities[0])
+		resolver := ""
+		if resolverNames, _ := net.LookupAddr(resolverIdentities[0]); len(resolverNames) > 0 {
+			resolver = resolverNames[0]
+		}
 
 		fmt.Printf(
 			"Your DNS resolver is %v (%v)\n",
-			resolverNames[0],
+			resolver,
 			resolverIdentities[0],
 		)
 	} else {
@@ -204,8 +220,7 @@ func testHTTP(o options) {
 	}()
 
 	if dialErr != nil {
-		fmt.Println("Could not contact server:", dialErr)
-		os.Exit(1)
+		return fmt.Errorf("Could not contact server: %v", dialErr)
 	}
 
 	fmt.Println(
@@ -231,8 +246,9 @@ func testHTTP(o options) {
 		if e := tlsCon.VerifyHostname(cdnURL.Host); e != nil {
 			fmt.Println("SSL was unable to verify the hostname!", e)
 		}
-
-		printableCertChain(tlsCon.ConnectionState().PeerCertificates).Write(os.Stdout)
+		printableCertChain(
+			tlsCon.ConnectionState().PeerCertificates,
+		).Write(os.Stdout)
 
 		conn = tlsCon
 	}
@@ -243,35 +259,70 @@ func testHTTP(o options) {
 
 	if err != nil || response == nil {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			fmt.Println(
-				"Timeout reading response from",
+			return fmt.Errorf(
+				"Timeout reading response from %v",
 				cdnURL.String(),
 			)
-		} else {
-			fmt.Println(
-				"Did not get a response (after establishing connection),",
-				"server behind loadbalancer / CDN may be down:",
-				err,
-			)
 		}
-		os.Exit(1)
+		return fmt.Errorf(
+			"Did not get a response (after establishing connection), server behind loadbalancer / CDN may be down: %v",
+			err,
+		)
 	}
 
 	if response.Body != nil {
 		defer response.Body.Close()
 	}
 
+	fmt.Println("Response was", response.Status)
+
 	if response.Body != nil {
-		b, _ := ioutil.ReadAll(response.Body)
+		var bodyWriters []io.Writer
+		md5 := md5.New()
+		var writtenBytes int64
+
+		if o.md5 {
+			bodyWriters = append(bodyWriters, md5)
+		}
+		if o.outfile != "" {
+			f, openFileErr := os.OpenFile(o.outfile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+			if openFileErr != nil {
+				fmt.Println(openFileErr)
+				return fmt.Errorf("Unable to open %v for writing: %v", o.outfile, openFileErr)
+			}
+			defer func() {
+				errClose := f.Close()
+				if err != nil {
+					fmt.Println(errClose)
+					return
+				}
+				fmt.Println("Wrote", o.outfile)
+			}()
+			bodyWriters = append(bodyWriters, f)
+		}
+
+		writer := ioutil.Discard
+		if len(bodyWriters) > 0 {
+			writer = io.MultiWriter(bodyWriters...)
+		}
+
+		writtenBytes, err = io.Copy(writer, response.Body)
+		if err != nil {
+			return fmt.Errorf("Error reading content body: %v", err)
+		}
+
 		timeTaken := time.Now().Sub(beforeRead)
-		bps := bytesPerSecond((float64(time.Second) / float64(timeTaken)) * float64(len(b)))
+		bps := bytesPerSecond((float64(time.Second) / float64(timeTaken)) * float64(writtenBytes))
 
 		fmt.Printf(
 			"Reading %v bytes took %v (%v)\n",
-			len(b), //response.Header.Get("content-length"),
+			writtenBytes,
 			timeTaken,
 			bps,
 		)
+		if o.md5 {
+			fmt.Printf("MD5 of Content %v\n", hex.EncodeToString(md5.Sum(nil)))
+		}
 	}
 
 	if response.Header.Get("X-Amz-Cf-Id") != "" {
@@ -287,6 +338,8 @@ func testHTTP(o options) {
 			nameserver[0],
 		)
 	}
+
+	return nil
 }
 
 type printableCertChain []*x509.Certificate
