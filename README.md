@@ -19,7 +19,7 @@ to a report.
 ## Usage
 
 ```
-> cdntest -md5 https://www.google.com
+> cdntest https://www.google.com
 Running CDN test at 2016-07-28 20:40:06.3299465 -0400 EDT
 My public IP is: xxx.xxx.xxx.xxx
 Host lookup of www.google.com took 14.6991ms
