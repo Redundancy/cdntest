@@ -20,7 +20,6 @@ import (
 	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -311,7 +310,7 @@ func testHTTP(o options) error {
 			timeTaken,
 			bps,
 		)
-		fmt.Printf("MD5 of Content %v\n", hex.EncodeToString(md5.Sum(nil)))
+		fmt.Printf("MD5 of Content: %x\n", md5.Sum(nil))
 	}
 
 	if response.Header.Get("X-Amz-Cf-Id") != "" {
